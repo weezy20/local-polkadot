@@ -1,7 +1,13 @@
 [package]
 name = "local-polkadot"
+description = "A simple CLI tool to run a local Polkadot RPC Node and explorer"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0"
+authors = ["Abhishek Shah <abhishekshah3@gmail.com>"]
+readme = "README.md"
+repository = "https://github.com/weezy20/local-polkadot"
+homepage = "https://github.com/weezy20/local-polkadot"
 
 [dependencies]
 anyhow = "1.0.93"

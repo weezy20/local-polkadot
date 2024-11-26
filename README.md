@@ -52,13 +52,13 @@ If you don't want store artifacts in `$HOME/.local-polkadot` you're free to spec
 
 It specifically looks for files `pjs.zip` and `polkadot` in its working directory, finding which would result in skipping of download.
 
-Additionally it uses some dependencies that are required on your system: `unzip`, `curl`, `bun`.
 
 For now only `polkadot` is supported, but I plan on including support for `kusama` as well. 
 
 This tool works because `warp sync` a feature of polkadot and substrate built chains that allows it to quickly sync up with the main network by downloading finality proofs instead of whole blocks which would make this a tediously long exercise.
 
 Here's the commands it executes internally : 
+It uses some dependencies that are required on your system: `unzip`, `curl`, `bun`.
 
 ```sh
 # For explorer
