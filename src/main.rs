@@ -26,12 +26,7 @@ fn main() -> anyhow::Result<()> {
     let (cwd, polkadot, apps) = setup(cli)?;
 
     // Run polkadot-js explorer
-    let mut c1 = run_process(
-        "bash",
-        &["-c", "bun run start"],
-        apps.to_str().unwrap(),
-        false,
-    );
+    let mut c1 = run_process("bun", &["run", "start"], apps.to_str().unwrap(), false);
 
     // Run Polkadot process
     let mut c2 = run_process(
@@ -120,8 +115,8 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
             std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, use --path"))?,
         );
         let cwd = home.join(".local-polkadot");
-        let confirm = Confirm::new("Are you sure you want to remove the existing directory?")
-            .initial_value(false)
+        let confirm = Confirm::new(f!("Are you sure you want to remove {}?", cwd.display()))
+            .initial_value(true)
             .interact()
             .map_err(|e| anyhow!("Failed to prompt for confirmation: {}", e))?;
 
@@ -153,7 +148,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
     if cwd.join("polkadot").exists() {
         println!("Polkadot already exists in the specified path. Skipping download...");
     } else {
-        println!("Downloading polkadot...");
+        println!("Downloading polkadot into {}...", cwd.display());
 
         // Download the file
         let output = Command::new("curl")
@@ -171,19 +166,34 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
             ));
         }
 
-        println!("Download completed.");
-        // Make the downloaded file executable
-        let _ = Command::new("chmod")
-            .arg("+x")
-            .arg(cwd.join("polkadot"))
-            .output()
-            .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
+        println!("Polkadot exe download completed.");
     }
-    if cwd.join("polkadot-js").exists() || cwd.join("apps-master").exists() {
+    // Download pjs.zip and unzip it into apps-master
+    if cwd.join("apps-master").exists() {
         println!("PolkadotJS already exists in the specified path. Skipping download...");
+    } else if !cwd.join("apps-master").exists() && cwd.join("pjs.zip").exists() {
+        println!("PolkadotJS already exists in the specified path. Skipping download...");
+        println!("Unzipping pjs.zip into {}/apps-master...", cwd.display());
+
+        // Unzip the downloaded file
+        let output = Command::new("unzip")
+            .arg(cwd.join("pjs.zip"))
+            .arg("-d")
+            .arg(&cwd)
+            .output()
+            .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Unzip failed with status: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
     } else {
-        // Start spinner
-        println!("Downloading polkadot-js...");
+        println!(
+            "Downloading polkadot-js into {}/apps-master...",
+            cwd.display()
+        );
 
         // Download the file
         let output = Command::new("curl")
@@ -217,6 +227,19 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
             ));
         }
     }
+    // fINALLY make everything ready to execute
+    // Make the downloaded file executable
+    let _ = Command::new("chmod")
+        .arg("+x")
+        .arg(cwd.join("polkadot"))
+        .output()
+        .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
+    // Run bun install
+    let _ = Command::new("bun")
+        .arg("install")
+        .current_dir(cwd.join("apps-master"))
+        .output()
+        .map_err(|e| anyhow!("Failed to run bun install: {}", e))?;
 
     Ok((cwd.clone(), cwd.join("polkadot"), cwd.join("apps-master")))
 }
