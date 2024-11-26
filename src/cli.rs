@@ -4,9 +4,11 @@ pub struct Cli {
    #[arg(long, short)]
    pub path: Option<String>,
    /// Use --tmp if you don't want to store anything locally
+   /// All artifacts will be deleted after the process exits
    #[arg(long, conflicts_with = "path", default_value = "false")]
    pub tmp: bool,
    /// Cleanup existing artifacts (if present) by removing `$HOME/.local-polkadot`
-   #[arg(long, conflicts_with = "tmp", default_value = "false")]
+   /// Useful when run as the only flag: `local-polkadot --fresh`
+   #[arg(long, conflicts_with = "tmp", conflicts_with = "path", default_value = "false")]
    pub fresh: bool,
 }

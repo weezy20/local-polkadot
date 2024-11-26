@@ -23,6 +23,7 @@ fn main() -> anyhow::Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
+    let tmp = cli.tmp;
     let (cwd, polkadot, apps) = setup(cli)?;
 
     // Run polkadot-js explorer
@@ -58,6 +59,10 @@ fn main() -> anyhow::Result<()> {
         .expect("Failed to kill polkadot-js explorer process");
     c2.kill().expect("Failed to kill Polkadot process");
     println!("All processes killed successfully.");
+    if tmp {
+        std::fs::remove_dir_all(&cwd)?;
+        println!("Removed {}", cwd.display());
+    }
     Ok(())
 }
 
