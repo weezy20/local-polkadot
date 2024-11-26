@@ -20,7 +20,7 @@ It is intentionally kept simple so that you may audit the code for yourself and 
 
 Install it using `cargo-install` or compile it 
 ```sh
-cargo install --git https://github.com/weezy20/local-polkadot
+cargo install local-polkadot
 ```
 
 Run it
