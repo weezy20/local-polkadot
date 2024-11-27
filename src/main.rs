@@ -7,6 +7,7 @@ use std::{
     io::BufRead,
     path::PathBuf,
     process::{Child, Command},
+    vec,
 };
 macro_rules! f {
     ($($arg:tt)*) => {
@@ -24,44 +25,58 @@ fn main() -> anyhow::Result<()> {
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
     let tmp = cli.tmp;
-    let (cwd, polkadot, apps) = setup(cli)?;
+    let Resources {
+        cwd,
+        polkadot,
+        apps,
+    } = setup(cli)?;
 
-    // Run polkadot-js explorer
-    let mut c1 = run_process("bun", &["run", "start"], apps.to_str().unwrap(), false);
+    let mut processes: Vec<(&'static str, Child)> = vec![];
 
+    if let Some(apps) = &apps {
+        // Run polkadot-js explorer
+        processes.push((
+            "polkadot-js",
+            run_process("bun", &["run", "start"], apps.to_str().unwrap(), false),
+        ));
+    }
     // Run Polkadot process
-    let mut c2 = run_process(
-        polkadot.to_str().unwrap(),
-        &[
-            "--chain",
-            "polkadot",
-            "--tmp",
-            "--name",
-            "myrpc",
-            "--sync",
-            "warp",
-            "--rpc-cors",
-            "all",
-            "--rpc-methods",
-            "Safe",
-            "--rpc-port",
-            "9944",
-            "--no-telemetry",
-        ],
-        cwd.to_str().unwrap(),
-        true,
-    );
+    processes.push((
+        "polkadot",
+        run_process(
+            polkadot.to_str().unwrap(),
+            &[
+                "--chain",
+                "polkadot",
+                "--tmp",
+                "--name",
+                "myrpc",
+                "--sync",
+                "warp",
+                "--rpc-cors",
+                "all",
+                "--rpc-methods",
+                "Safe",
+                "--rpc-port",
+                "9944",
+                "--no-telemetry",
+            ],
+            cwd.to_str().unwrap(),
+            true,
+        ),
+    ));
 
     println!("Press Ctrl-C to terminate process");
     rx.recv().expect("Could not receive from channel.");
     println!("\nCleaning up and Exiting...");
-    c1.kill()
-        .expect("Failed to kill polkadot-js explorer process");
-    c2.kill().expect("Failed to kill Polkadot process");
+    for (name, mut p) in processes {
+        println!("Killing {}", name);
+        p.kill().expect(&f!("Failed to kill {:?}", name));
+    }
     println!("All processes killed successfully.");
     if tmp {
         std::fs::remove_dir_all(&cwd)?;
-        println!("Removed {}", cwd.display());
+        println!("Removed temp dir {}", cwd.display());
     }
     Ok(())
 }
@@ -108,14 +123,15 @@ fn run_process(command: &str, args: &[&str], working_dir: &str, capture_log: boo
     }
 }
 
-fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
+fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
     let mut cwd = PathBuf::from(match &cli.path {
         Some(path) => path.clone(),
-        None => {
-            std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, re-run with --path to specify where to download polkadot and polkadotjs"))?
-        }
+        None => std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, re-run with --tmp or --path to specify where to download polkadot and polkadotjs"))?
     });
-    if cli.fresh {
+    // --tmp and --fresh flags are mutually exclusive
+    if cli.tmp {
+        cwd = std::env::temp_dir();
+    } else if cli.fresh {
         let home = PathBuf::from(
             std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, use --path"))?,
         );
@@ -131,25 +147,34 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
             std::fs::remove_dir_all(cwd)?;
         }
     }
-    // If using default path, we need to work with $HOME/.local-polkadot to keep things clean
+    // We are either using the default or a temporary directory
     if cli.path.is_none() {
         // Create .local-polkadot directory
         cwd = cwd.join(".local-polkadot");
         if !cwd.exists() {
-            println!(
-                "Creating directory `$HOME/.local-polkadot` {}",
-                cwd.display()
-            );
-            std::fs::create_dir(&cwd).map_err(|e| {
-                anyhow!("Failed to create directory `$HOME/.local-polkadot`: {}", e)
-            })?;
+            println!("Creating .local-polkadot @ {}", cwd.display());
+            std::fs::create_dir(&cwd)
+                .map_err(|e| anyhow!("Failed to create .local-polkadot {}", e))?;
         }
     } else {
+        // --path was provided but the directory does not exist on local fs
         if !cwd.exists() {
-            std::fs::create_dir_all(&cwd)
-                .map_err(|e| anyhow!("Failed to create directory `{}`: {}", cwd.display(), e))?;
+            let confirm =
+                Confirm::new(f!("Directory {} does not exist. Create it?", cwd.display()))
+                    .initial_value(true)
+                    .interact()
+                    .map_err(|e| anyhow!("Failed to prompt for confirmation: {}", e))?;
+            if confirm {
+                std::fs::create_dir_all(&cwd).map_err(|e| {
+                    anyhow!("Failed to create directory `{}`: {}", cwd.display(), e)
+                })?;
+            } else {
+                println!("Exiting...");
+                std::process::exit(1);
+            }
         }
     }
+    // Download
     if cwd.join("polkadot").exists() {
         println!("Polkadot already exists in the specified path. Skipping download...");
     } else {
@@ -173,66 +198,69 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
 
         println!("Polkadot exe download completed.");
     }
-    // Download pjs.zip and unzip it into apps-master
-    if cwd.join("apps-master").exists() {
-        println!("PolkadotJS already exists in the specified path. Skipping download...");
-    } else if !cwd.join("apps-master").exists() && cwd.join("pjs.zip").exists() {
-        println!("PolkadotJS already exists in the specified path. Skipping download...");
-        println!("Unzipping pjs.zip into {}/apps-master...", cwd.display());
+    if !cli.skip_polkadotjs {
+        // Download pjs.zip and unzip it into apps-master
+        if cwd.join("apps-master").exists() {
+            println!("PolkadotJS already exists in the specified path. Skipping download...");
+        } else if !cwd.join("apps-master").exists() && cwd.join("pjs.zip").exists() {
+            println!("PolkadotJS already exists in the specified path. Skipping download...");
+            println!("Unzipping pjs.zip into {}/apps-master...", cwd.display());
 
-        // Unzip the downloaded file
-        let output = Command::new("unzip")
-            .arg(cwd.join("pjs.zip"))
-            .arg("-d")
-            .arg(&cwd)
-            .output()
-            .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
+            // Unzip the downloaded file
+            let output = Command::new("unzip")
+                .arg(cwd.join("pjs.zip"))
+                .arg("-d")
+                .arg(&cwd)
+                .output()
+                .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "Unzip failed with status: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-    } else {
-        println!(
-            "Downloading polkadot-js into {}/apps-master...",
-            cwd.display()
-        );
+            if !output.status.success() {
+                return Err(anyhow!(
+                    "Unzip failed with status: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+        } else {
+            println!(
+                "Downloading polkadot-js into {}/apps-master...",
+                cwd.display()
+            );
 
-        // Download the file
-        let output = Command::new("curl")
-            .arg("-L")
-            .arg(PJS)
-            .arg("-o")
-            .arg(cwd.join("pjs.zip"))
-            .output()
-            .map_err(|e| anyhow!("Failed to start download: {}", e))?;
+            // Download the file
+            let output = Command::new("curl")
+                .arg("-L")
+                .arg(PJS)
+                .arg("-o")
+                .arg(cwd.join("pjs.zip"))
+                .output()
+                .map_err(|e| anyhow!("Failed to start download: {}", e))?;
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "Download failed with status: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+            if !output.status.success() {
+                return Err(anyhow!(
+                    "Download failed with status: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
 
-        println!("Download completed.");
-        // Unzip the downloaded file
-        let output = Command::new("unzip")
-            .arg(cwd.join("pjs.zip"))
-            .arg("-d")
-            .arg(&cwd)
-            .output()
-            .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
+            println!("Download completed.");
+            // Unzip the downloaded file
+            let output = Command::new("unzip")
+                .arg(cwd.join("pjs.zip"))
+                .arg("-d")
+                .arg(&cwd)
+                .output()
+                .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "Unzip failed with status: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
+            if !output.status.success() {
+                return Err(anyhow!(
+                    "Unzip failed with status: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
         }
     }
-    // fINALLY make everything ready to execute
+
+    // FINALLY make everything ready to execute
     // Make the downloaded file executable
     let _ = Command::new("chmod")
         .arg("+x")
@@ -240,11 +268,28 @@ fn setup(cli: cli::Cli) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
         .output()
         .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
     // Run bun install
-    let _ = Command::new("bun")
-        .arg("install")
-        .current_dir(cwd.join("apps-master"))
-        .output()
-        .map_err(|e| anyhow!("Failed to run bun install: {}", e))?;
+    if !cli.skip_polkadotjs {
+        let _ = Command::new("bun")
+            .arg("install")
+            .current_dir(cwd.join("apps-master"))
+            .output()
+            .map_err(|e| anyhow!("Failed to run bun install: {}", e))?;
+    }
 
-    Ok((cwd.clone(), cwd.join("polkadot"), cwd.join("apps-master")))
+    Ok(Resources {
+        cwd: cwd.clone(),
+        polkadot: cwd.join("polkadot"),
+        apps: if cli.skip_polkadotjs {
+            None
+        } else {
+            Some(cwd.join("apps-master"))
+        },
+    })
+}
+
+struct Resources {
+    cwd: PathBuf,
+    polkadot: PathBuf,
+    // Maybe skipped with --skip-polkadotjs / --skip-pjs
+    apps: Option<PathBuf>,
 }

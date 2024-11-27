@@ -70,5 +70,5 @@ bun run start;
 polkadot --chain polkadot --sync warp --rpc-methods Safe --tmp --rpc-port 9944 --rpc-cors all ... # and a few more
 ```
 
-
+To see what's new checkout the [CHANGELOG](CHANGELOG.md)
 
