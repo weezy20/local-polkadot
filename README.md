@@ -18,6 +18,8 @@ It is intentionally kept simple so that you may audit the code for yourself and 
 
 ## Usage
 
+![demo](.assets/demo.gif)
+
 Install it using `cargo-install` or compile it 
 ```sh
 cargo install local-polkadot
