@@ -86,15 +86,12 @@ fn main() -> anyhow::Result<()> {
 fn run_process(command: &str, args: &[&str], working_dir: &str, capture_log: bool) -> Child {
     let mut cmd = Command::new(command);
     if !capture_log {
-        let child = cmd
-            .args(args)
+        cmd.args(args)
             .current_dir(working_dir)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .expect(&f!("Failed to start {:?}", command));
-        // Return handle to the spawned process
-        child
+            .expect(&f!("Failed to start {:?}", command))
     } else {
         let mut child = cmd
             .args(args)
@@ -104,15 +101,8 @@ fn run_process(command: &str, args: &[&str], working_dir: &str, capture_log: boo
             .spawn()
             .expect(&f!("Failed to start {:?}", command));
 
-        let stdout = child.stdout.take().expect("Failed to open stdout");
+        // capture_log maybe used only for node-processes as such, it is sensible to only spawn a thread to print stderr
         let stderr = child.stderr.take().expect("Failed to open stderr");
-
-        std::thread::spawn(move || {
-            let reader = std::io::BufReader::new(stdout);
-            for line in reader.lines() {
-                println!("stdout> {}", line.expect("Failed to read line from stdout"));
-            }
-        });
 
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
