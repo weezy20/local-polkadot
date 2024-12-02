@@ -60,12 +60,12 @@ For now only `polkadot` is supported, but I plan on including support for `kusam
 This tool works because `warp sync` a feature of polkadot and substrate built chains that allows it to quickly sync up with the main network by downloading finality proofs instead of whole blocks which would make this a tediously long exercise.
 
 Here's the commands it executes internally : 
-It uses some dependencies that are required on your system: `unzip`, `curl`, `bun`.
+It uses some dependencies that are required on your system: `unzip`, `curl`, `yarn`.
 
 ```sh
 # For explorer
-bun install;
-bun run start;
+yarn install;
+yarn run start;
 # For Polkadot
 polkadot --chain polkadot --sync warp --rpc-methods Safe --tmp --rpc-port 9944 --rpc-cors all ... # and a few more
 ```

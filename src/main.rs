@@ -37,7 +37,7 @@ fn main() -> anyhow::Result<()> {
         // Run polkadot-js explorer
         processes.push((
             "polkadot-js",
-            run_process("bun", &["run", "start"], apps.to_str().unwrap(), false),
+            run_process("yarn", &["run", "start"], apps.to_str().unwrap(), false),
         ));
     }
     // Run Polkadot process
@@ -267,13 +267,13 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
         .arg(cwd.join("polkadot"))
         .output()
         .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
-    // Run bun install
+    // Run yarn install
     if !cli.skip_polkadotjs {
-        let _ = Command::new("bun")
+        let _ = Command::new("yarn")
             .arg("install")
             .current_dir(cwd.join("apps-master"))
             .output()
-            .map_err(|e| anyhow!("Failed to run bun install: {}", e))?;
+            .map_err(|e| anyhow!("Failed to run yarn install: {}", e))?;
     }
 
     Ok(Resources {
