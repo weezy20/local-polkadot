@@ -6,3 +6,7 @@
 
 ### [v0.2.0 - v0.2.1]
 - Replace bun -> yarn as it's now a hard dependency for polkadot-js/apps
+
+### [v0.2.1 - v0.2.2]
+- Remove dependency on `cURL`. We use reqwest now.
+- Concurrent downloads for `pjs` and `polkadot` exe.
