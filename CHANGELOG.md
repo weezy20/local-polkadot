@@ -10,3 +10,6 @@
 ### [v0.2.1 - v0.2.2]
 - Remove dependency on `cURL`. We use reqwest now.
 - Concurrent downloads for `pjs` and `polkadot` exe.
+
+### [v0.2.2 - v0.2.3]
+- No functional changes. Update to include newer binary in crates.io

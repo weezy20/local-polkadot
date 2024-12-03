@@ -46,6 +46,8 @@ Would remove the `$HOME/.local-polkadot` folder, recreate it, and redownload the
 
 You can also use local polkadot as `local-polkadot --tmp` to remove `$HOME/.local-polkadot` after you're done.
 
+If you're already running an explorer, you might want to pass in `--skip-pjs` or `--skip-polkadotjs` which makes sure to only run the polkadot node and not the explorer
+
 ## More about local-polkadot
 
 This tool does nothing new that couldn't be done manually. I created this for myself as I found myself doing the steps manually many times.
