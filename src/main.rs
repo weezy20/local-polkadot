@@ -7,7 +7,7 @@ use reqwest::blocking::Client;
 use std::{
     fs,
     io::BufRead,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command},
     vec,
 };
@@ -37,16 +37,18 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(apps) = &apps {
         // Run polkadot-js explorer
+        let yarn = which::which("yarn")
+            .context("`yarn` not found in PATH. Please install yarn and try again.")?;
         processes.push((
             "polkadot-js",
-            run_process("yarn", &["run", "start"], apps.to_str().unwrap(), false),
+            run_process(&yarn, &["run", "start"], &apps, false)?,
         ));
     }
     // Run Polkadot process
     processes.push((
         "polkadot",
         run_process(
-            polkadot.to_str().unwrap(),
+            &fs::canonicalize(polkadot)?,
             &[
                 "--chain",
                 "polkadot",
@@ -63,9 +65,9 @@ fn main() -> anyhow::Result<()> {
                 "9944",
                 "--no-telemetry",
             ],
-            cwd.to_str().unwrap(),
+            &cwd,
             true,
-        ),
+        )?,
     ));
 
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
@@ -83,23 +85,28 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_process(command: &str, args: &[&str], working_dir: &str, capture_log: bool) -> Child {
+fn run_process(
+    command: &Path,
+    args: &[&str],
+    working_dir: &Path,
+    capture_log: bool,
+) -> anyhow::Result<Child> {
     let mut cmd = Command::new(command);
     if !capture_log {
         cmd.args(args)
-            .current_dir(working_dir)
+            .current_dir(working_dir.canonicalize()?)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .expect(&f!("Failed to start {:?}", command))
+            .with_context(|| f!("Failed to start {:?} in {}", command, working_dir.display()))
     } else {
         let mut child = cmd
             .args(args)
-            .current_dir(working_dir)
+            .current_dir(working_dir.canonicalize()?)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .expect(&f!("Failed to start {:?}", command));
+            .with_context(|| f!("Failed to start {:?} in {}", command, working_dir.display()))?;
 
         // capture_log maybe used only for node-processes as such, it is sensible to only spawn a thread to print stderr
         let stderr = child.stderr.take().expect("Failed to open stderr");
@@ -111,23 +118,27 @@ fn run_process(command: &str, args: &[&str], working_dir: &str, capture_log: boo
             }
         });
         // Return handle to the spawned process
-        child
+        Ok(child)
     }
 }
 
 fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
     let mut cwd = PathBuf::from(match &cli.path {
         Some(path) => path.clone(),
-        None => std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, re-run with --tmp or --path to specify where to download polkadot and polkadotjs"))?
+        None => std::env::var("HOME").map_err(|_| {
+            anyhow!("$HOME not found, re-run with --path to specify where to download artifacts")
+        })?,
     });
     // --tmp and --fresh flags are mutually exclusive
-    if cli.tmp {
-        cwd = std::env::temp_dir();
-    } else if cli.fresh {
-        let home = PathBuf::from(
-            std::env::var("HOME").map_err(|_| anyhow!("$HOME not found, use --path"))?,
-        );
-        let cwd = home.join(".local-polkadot");
+    cwd = if cli.tmp {
+        let s: String = std::iter::repeat_with(fastrand::alphanumeric)
+            .take(10)
+            .collect();
+        cwd.join(f!(".tmp-local-polkadot-{}", s))
+    } else {
+        cwd.join(".local-polkadot")
+    };
+    if cwd.exists() && cwd.is_dir() && cli.fresh {
         let confirm = Confirm::new(f!("Are you sure you want to remove {}?", cwd.display()))
             .initial_value(true)
             .interact()
@@ -136,35 +147,17 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
         if !confirm {
             println!("Not removing {}", cwd.display());
         } else {
-            fs::remove_dir_all(cwd)?;
+            fs::remove_dir_all(&cwd)?;
         }
     }
-    // We are either using the default or a temporary directory
-    if cli.path.is_none() {
-        // Create .local-polkadot directory
-        cwd = cwd.join(".local-polkadot");
-        if !cwd.exists() {
-            println!("Creating .local-polkadot @ {}", cwd.display());
-            fs::create_dir(&cwd).map_err(|e| anyhow!("Failed to create .local-polkadot {}", e))?;
-        }
-    } else {
-        // --path was provided but the directory does not exist on local fs
-        if !cwd.exists() {
-            let confirm =
-                Confirm::new(f!("Directory {} does not exist. Create it?", cwd.display()))
-                    .initial_value(true)
-                    .interact()
-                    .map_err(|e| anyhow!("Failed to prompt for confirmation: {}", e))?;
-            if confirm {
-                fs::create_dir_all(&cwd).map_err(|e| {
-                    anyhow!("Failed to create directory `{}`: {}", cwd.display(), e)
-                })?;
-            } else {
-                println!("Exiting...");
-                std::process::exit(1);
-            }
-        }
+
+    // Create .local-polkadot directory
+    if !cwd.exists() {
+        println!("Creating local-polkadot directory at {}", cwd.display());
+        fs::create_dir(&cwd)
+            .map_err(|e| anyhow!("Failed to create local-polkadot directory {}", e))?;
     }
+
     // Download
     let client = Client::new();
     std::thread::scope(|s| {
@@ -231,19 +224,8 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                     println!("Polkadot-js download completed.");
                     // Unzip the downloaded file
                     println!("Extracting pjs.zip into {}/apps-master...", cwd.display());
-                    let output = Command::new("unzip")
-                        .arg(cwd.join("pjs.zip"))
-                        .arg("-d")
-                        .arg(&cwd)
-                        .output()
-                        .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
-
-                    if !output.status.success() {
-                        return Err(anyhow!(
-                            "Unzip failed with status: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        ));
-                    }
+                    let mut archive = zip::ZipArchive::new(fs::File::open(cwd.join("pjs.zip"))?)?;
+                    unzip(&mut archive, &cwd)?;
                     println!("Extraction of pjs.zip completed.");
                 }
             }
@@ -258,16 +240,20 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
         .arg(cwd.join("polkadot"))
         .output()
         .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
-    // Run yarn install
-    println!("Running yarn install...");
+
+    // Run yarn install if applicable
     if !cli.skip_polkadotjs {
+        println!(
+            "Running yarn install in {}...",
+            cwd.join("apps-master").display()
+        );
         let _ = Command::new("yarn")
             .arg("install")
             .current_dir(cwd.join("apps-master"))
             .output()
             .map_err(|e| anyhow!("Failed to run yarn install: {}", e))?;
+        println!("Yarn install completed.");
     }
-    println!("Yarn install completed.");
 
     Ok(Resources {
         cwd: cwd.clone(),
@@ -285,4 +271,36 @@ struct Resources {
     polkadot: PathBuf,
     // Maybe skipped with --skip-polkadotjs / --skip-pjs
     apps: Option<PathBuf>,
+}
+
+fn unzip(archive: &mut zip::ZipArchive<fs::File>, cwd: &PathBuf) -> anyhow::Result<()> {
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).unwrap();
+        let outpath = match file.enclosed_name() {
+            Some(path) => cwd.join(path),
+            None => continue,
+        };
+        if file.is_dir() {
+            fs::create_dir_all(&outpath).unwrap();
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(p).unwrap();
+                }
+            }
+            let mut outfile = fs::File::create(&outpath).unwrap();
+            std::io::copy(&mut file, &mut outfile).unwrap();
+        }
+
+        // Get and Set permissions
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            if let Some(mode) = file.unix_mode() {
+                fs::set_permissions(&outpath, fs::Permissions::from_mode(mode)).unwrap();
+            }
+        }
+    }
+    Ok(())
 }

@@ -7,7 +7,6 @@ pub struct Cli {
     /// All artifacts will be deleted after the process exits
     #[arg(
         long,
-        conflicts_with = "path",
         conflicts_with = "fresh",
         default_value = "false"
     )]
@@ -17,7 +16,6 @@ pub struct Cli {
     #[arg(
         long,
         conflicts_with = "tmp",
-        conflicts_with = "path",
         default_value = "false"
     )]
     pub fresh: bool,

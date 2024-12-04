@@ -13,3 +13,8 @@
 
 ### [v0.2.2 - v0.2.3]
 - No functional changes. Update to include newer binary in crates.io
+
+### [v0.2.3 - v0.3.0]
+- Removed system dependency on unzip.
+- Removed restriction of not being able to use `--path` with `--tmp` or `--fresh`. 
+  There's no reason why `--path` should not be able to work with the aforementioned flags.`--path --tmp` is equivalent to `--path --fresh` except the latter will not remove the directory at the end of the  process 
