@@ -1,8 +1,10 @@
+use std::path::PathBuf;
+
 #[derive(clap::Parser)]
 pub struct Cli {
     /// Path to store artifacts, defaults to `$HOME/.local-polkadot`
     #[arg(long, short)]
-    pub path: Option<String>,
+    pub path: Option<PathBuf>,
     /// Use --tmp if you don't want to store anything locally
     /// All artifacts will be deleted after the process exits
     #[arg(

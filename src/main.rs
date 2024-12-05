@@ -125,16 +125,29 @@ fn run_process(
 fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
     let mut cwd = PathBuf::from(match &cli.path {
         Some(path) => path.clone(),
-        None => std::env::var("HOME").map_err(|_| {
-            anyhow!("$HOME not found, re-run with --path to specify where to download artifacts")
-        })?,
+        None => PathBuf::from(&std::env::var("HOME").map_err(|_| {
+            anyhow!(
+                "User $HOME not found, re-run with --path to specify where to download artifacts"
+            )
+        })?),
     });
     // --tmp and --fresh flags are mutually exclusive
+    // cwd/.local-polkadot
     cwd = if cli.tmp {
         let s: String = std::iter::repeat_with(fastrand::alphanumeric)
             .take(10)
             .collect();
-        cwd.join(f!(".tmp-local-polkadot-{}", s))
+        // --tmp + --path <path>
+        let tmp_dir = if cli.path.is_some() {
+            cwd.join(f!(".tmp-local-polkadot-{s}")) // allow --path create_dir_all to be handled downstream
+        } else {
+            // --tmp only
+            let tmp_dir = PathBuf::from("/tmp").join(f!(".tmp-local-polkadot-{}", s)); // create immediately
+            fs::create_dir(&tmp_dir)
+                .map_err(|e| anyhow!(f!("Failed to create temporary dir {:?}", e)))?;
+            tmp_dir
+        };
+        tmp_dir
     } else {
         cwd.join(".local-polkadot")
     };
@@ -145,17 +158,44 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             .map_err(|e| anyhow!("Failed to prompt for confirmation: {}", e))?;
 
         if !confirm {
-            println!("Not removing {}", cwd.display());
+            println!("Not removing (--fresh was a no-op){}", cwd.display());
         } else {
             fs::remove_dir_all(&cwd)?;
+            fs::create_dir(&cwd)
+                .map_err(|e| anyhow!("Failed to create directory `{}`: {}", cwd.display(), e))?;
         }
     }
-
-    // Create .local-polkadot directory
+    // Create .local-polkadot directory if not created (--path <to/non/existing/dir>)
+    // Or using $HOME/.local-polkadot for the first time (no-prompt)
     if !cwd.exists() {
-        println!("Creating local-polkadot directory at {}", cwd.display());
-        fs::create_dir(&cwd)
-            .map_err(|e| anyhow!("Failed to create local-polkadot directory {}", e))?;
+        // if --path is specified to a non-existing directory tree, we confirm before
+        // running create_dir_all
+        if cli.path.is_some() {
+            let confirm = match cli.tmp {
+                true => true,
+                false => Confirm::new(f!("Directory {} does not exist. Create it?", cwd.display()))
+                    .initial_value(true)
+                    .interact()
+                    .map_err(|e| anyhow!("Failed to prompt for confirmation: {}", e))?,
+            };
+            if confirm {
+                fs::create_dir_all(&cwd).map_err(|e| {
+                    anyhow!("Failed to create directory `{}`: {}", cwd.display(), e)
+                })?;
+            } else {
+                println!("Exiting...");
+                std::process::exit(1);
+            }
+        } else {
+            println!("Creating local-polkadot directory at {}", cwd.display());
+            fs::create_dir(&cwd).map_err(|e| {
+                anyhow!(
+                    "Failed to create local-polkadot directory {} due to {}",
+                    cwd.display(),
+                    e
+                )
+            })?;
+        }
     }
 
     // Download
@@ -180,34 +220,22 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             }
             Ok(())
         });
+
         // Polkadot-js/apps zip
         s.spawn(|| -> anyhow::Result<()> {
             if !cli.skip_polkadotjs {
-                // Download pjs.zip and unzip it into apps-master
                 if cwd.join("apps-master").exists() {
                     println!(
-                        "PolkadotJS already exists in the specified path. Skipping download..."
+                        "Polkadot-js already exists in the specified path. Skipping download..."
                     );
-                } else if !cwd.join("apps-master").exists() && cwd.join("pjs.zip").exists() {
+                } else if cwd.join("pjs.zip").exists() {
                     println!(
-                        "PolkadotJS already exists in the specified path. Skipping download..."
+                        "Polkadot-js zip already exists in the specified path. Skipping download..."
                     );
-                    println!("Unzipping pjs.zip into {}/apps-master...", cwd.display());
-
-                    // Unzip the downloaded file
-                    let output = Command::new("unzip")
-                        .arg(cwd.join("pjs.zip"))
-                        .arg("-d")
-                        .arg(&cwd)
-                        .output()
-                        .map_err(|e| anyhow!("Failed to unzip file: {}", e))?;
-
-                    if !output.status.success() {
-                        return Err(anyhow!(
-                            "Unzip failed with status: {}",
-                            String::from_utf8_lossy(&output.stderr)
-                        ));
-                    }
+                    println!("Extracting pjs.zip into {}/apps-master...", cwd.display());
+                    let mut archive = zip::ZipArchive::new(fs::File::open(cwd.join("pjs.zip"))?)?;
+                    unzip(&mut archive, &cwd)?;
+                    println!("Extraction of pjs.zip completed.");
                 } else {
                     println!(
                         "Downloading polkadot-js into {}/apps-master...",
@@ -232,7 +260,6 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             Ok(())
         });
     });
-
     // FINALLY make everything ready to execute
     // Make the downloaded file executable
     let _ = Command::new("chmod")
@@ -247,11 +274,19 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             "Running yarn install in {}...",
             cwd.join("apps-master").display()
         );
-        let _ = Command::new("yarn")
+        let yarn = which::which("yarn")
+            .context("`yarn` not found in PATH. Please install yarn and try again.")?;
+        let _ = Command::new(yarn)
             .arg("install")
             .current_dir(cwd.join("apps-master"))
             .output()
-            .map_err(|e| anyhow!("Failed to run yarn install: {}", e))?;
+            .map_err(|e| {
+                anyhow!(
+                    "Failed to run yarn install in {}: {}",
+                    cwd.join("apps-master").display(),
+                    e
+                )
+            })?;
         println!("Yarn install completed.");
     }
 
