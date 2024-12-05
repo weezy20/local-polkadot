@@ -206,9 +206,11 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             if cwd.join("polkadot").exists() {
                 println!("Polkadot already exists in the specified path. Skipping download...");
             } else {
-                println!("Downloading polkadot into {}...", cwd.display());
-
+                // let spinner = cliclack::spinner();
+                // spinner.set_message("Polkadot: ");
+                // spinner.start(f!("Downloading polkadot into {}...", cwd.display()));
                 // Download the file
+                println!("Downloading Polkadot exe ...");
                 client
                     .get(POLKADOT)
                     .send()
@@ -217,6 +219,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                     .expect("returns binary data");
 
                 println!("Polkadot exe download completed.");
+                // spinner.stop(f!("Polkadot exe download completed."));
             }
             Ok(())
         });
@@ -237,10 +240,11 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                     unzip(&mut archive, &cwd)?;
                     println!("Extraction of pjs.zip completed.");
                 } else {
-                    println!(
+                    let spinner = cliclack::spinner();
+                    spinner.start(f!(
                         "Downloading polkadot-js into {}/apps-master...",
                         cwd.display()
-                    );
+                    ));
 
                     client
                         .get(PJS)
@@ -249,12 +253,37 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                         .copy_to(&mut fs::File::create(cwd.join("pjs.zip"))?)
                         .map_err(|e| anyhow!("Failed to write to file: {}", e))?;
 
-                    println!("Polkadot-js download completed.");
+                    spinner.set_message(f!("Polkadot-js download completed."));
                     // Unzip the downloaded file
-                    println!("Extracting pjs.zip into {}/apps-master...", cwd.display());
+                    spinner.set_message(f!(
+                        "Extracting pjs.zip into {}/apps-master...",
+                        cwd.display()
+                    ));
                     let mut archive = zip::ZipArchive::new(fs::File::open(cwd.join("pjs.zip"))?)?;
                     unzip(&mut archive, &cwd)?;
-                    println!("Extraction of pjs.zip completed.");
+                    spinner.set_message("Extraction of pjs.zip completed.");
+                    // Run yarn install if applicable
+                    if !cli.skip_polkadotjs {
+                        spinner.set_message(f!(
+                            "Running yarn install in {}...",
+                            cwd.join("apps-master").display()
+                        ));
+                        let yarn = which::which("yarn").context(
+                            "`yarn` not found in PATH. Please install yarn and try again.",
+                        )?;
+                        let _ = Command::new(yarn)
+                            .arg("install")
+                            .current_dir(cwd.join("apps-master"))
+                            .output()
+                            .map_err(|e| {
+                                anyhow!(
+                                    "Failed to run yarn install in {}: {}",
+                                    cwd.join("apps-master").display(),
+                                    e
+                                )
+                            })?;
+                        spinner.stop("Yarn install completed.");
+                    }
                 }
             }
             Ok(())
@@ -267,28 +296,6 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
         .arg(cwd.join("polkadot"))
         .output()
         .map_err(|e| anyhow!("Failed to make file executable: {}", e))?;
-
-    // Run yarn install if applicable
-    if !cli.skip_polkadotjs {
-        println!(
-            "Running yarn install in {}...",
-            cwd.join("apps-master").display()
-        );
-        let yarn = which::which("yarn")
-            .context("`yarn` not found in PATH. Please install yarn and try again.")?;
-        let _ = Command::new(yarn)
-            .arg("install")
-            .current_dir(cwd.join("apps-master"))
-            .output()
-            .map_err(|e| {
-                anyhow!(
-                    "Failed to run yarn install in {}: {}",
-                    cwd.join("apps-master").display(),
-                    e
-                )
-            })?;
-        println!("Yarn install completed.");
-    }
 
     Ok(Resources {
         cwd: cwd.clone(),
