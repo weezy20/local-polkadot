@@ -77,8 +77,6 @@ This tool does nothing new that couldn't be done manually. I created this for my
 
 It specifically looks for files `pjs.zip`, `apps-master` and `polkadot` in its working directory, to decide if it needs to download or unzip apps-master archive again.
 
-For now only the Polkadot network is supported, but I plan on including support for Kusama as well. 
-
 This tool works because `warp sync` a feature of polkadot and substrate built chains that allows it to quickly sync up with the main network by downloading finality proofs instead of whole blocks which would make this a tediously long exercise.
 
 You must have `yarn` on your system if you want to use the explorer otherwise just use `--skip-pjs`.
