@@ -5,7 +5,8 @@ use clap::Parser;
 use cliclack::Confirm;
 use console::style;
 use crossterm::{
-    cursor, execute,
+    cursor::{self, Hide, MoveTo},
+    execute,
     terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use reqwest::blocking::Client;
@@ -33,6 +34,7 @@ fn main() -> anyhow::Result<()> {
         .expect("Error setting Ctrl-C handler");
     let tmp = cli.tmp;
     execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
     let Resources {
         cwd,
         polkadot,
@@ -50,6 +52,7 @@ fn main() -> anyhow::Result<()> {
             run_process(&yarn, &["run", "start"], apps, false)?,
         ));
     }
+    execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
     // Run Polkadot process
     processes.push((
         "polkadot",
@@ -76,16 +79,17 @@ fn main() -> anyhow::Result<()> {
         )?,
     ));
     println!(
-        "\x1b[1m{}: {}\x1b[0m",
+        "\x1b[1m{}: {}\n\x1b[0m",
         style("Explorer").cyan(),
         style("http://localhost:3000").green()
     );
     println!(
-        "\x1b[1m{}:    {}\x1b[0m",
+        "\x1b[1m{}: (Wait for warp and state sync to complete)\n\t{}\n\x1b[0m",
         style("Local").red(),
         style("http://localhost:3000/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer").green()
     );
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
+
     rx.recv().expect("Could not receive from channel.");
     execute!(io::stdout(), LeaveAlternateScreen)?;
     execute!(io::stdout(), Clear(ClearType::FromCursorDown)).unwrap();
@@ -127,17 +131,16 @@ fn run_process(
 
         // capture_log maybe used only for node-processes as such, it is sensible to only spawn a thread to print stderr
         let stderr = child.stderr.take().expect("Failed to open stderr");
-        execute!(io::stdout(), Clear(ClearType::FromCursorUp)).unwrap();
-
+        let node_logs = 5;
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines() {
                 // Move the cursor to the position below the pinned lines
-                execute!(io::stdout(), cursor::MoveTo(0, 0)).unwrap();
+                execute!(io::stdout(), cursor::MoveTo(0, node_logs), Hide).unwrap();
                 // Clear the line before printing new log
                 execute!(io::stdout(), Clear(ClearType::UntilNewLine)).unwrap();
                 // Print log
-                eprintln!("{}", line.expect("Failed to read line from stderr"));
+                eprintln!("Node Logs 🖥️ > {}", line.expect("Failed to read line from stderr"));
             }
         });
         // Return handle to the spawned process
@@ -161,7 +164,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             .take(10)
             .collect();
         // --tmp + --path <path>
-        
+
         if cli.path.is_some() {
             cwd.join(f!(".tmp-local-polkadot-{s}")) // allow --path create_dir_all to be handled downstream
         } else {

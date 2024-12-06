@@ -19,3 +19,6 @@
 - Removed restriction of not being able to use `--path` with `--tmp` or `--fresh`. 
   There's no reason why `--path` should not be able to work with the aforementioned flags.`--path --tmp` is equivalent to `--path --fresh` except the latter will not remove the directory at the end of the  process 
 - `--tmp` without `--path` creates a dir in `/tmp` and is cleaned up at the end of the process.
+
+### [v0.4.0]
+- Improved cli user experience
