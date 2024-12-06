@@ -132,7 +132,7 @@ fn run_process(
 
         // capture_log maybe used only for node-processes as such, it is sensible to only spawn a thread to print stderr
         let stderr = child.stderr.take().expect("Failed to open stderr");
-        let node_logs = 5;
+        let node_logs = 7; // Spacing for pinned messages in main()
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines() {
