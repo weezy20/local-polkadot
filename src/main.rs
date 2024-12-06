@@ -15,7 +15,6 @@ use std::{
     io::{self, BufRead},
     path::{Path, PathBuf},
     process::{Child, Command},
-    vec,
 };
 macro_rules! f {
     ($($arg:tt)*) => {
@@ -352,7 +351,7 @@ struct Resources {
     apps: Option<PathBuf>,
 }
 
-fn unzip(archive: &mut zip::ZipArchive<fs::File>, cwd: &PathBuf) -> anyhow::Result<()> {
+fn unzip(archive: &mut zip::ZipArchive<fs::File>, cwd: &Path) -> anyhow::Result<()> {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
         let outpath = match file.enclosed_name() {
