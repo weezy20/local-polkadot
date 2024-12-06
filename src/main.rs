@@ -22,8 +22,8 @@ macro_rules! f {
     };
 }
 
-const PJS: &'static str = "https://github.com/polkadot-js/apps/archive/refs/heads/master.zip";
-const POLKADOT: &'static str =
+const PJS: &str = "https://github.com/polkadot-js/apps/archive/refs/heads/master.zip";
+const POLKADOT: &str =
     "https://github.com/paritytech/polkadot-sdk/releases/latest/download/polkadot";
 
 fn main() -> anyhow::Result<()> {
@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
             .context("`yarn` not found in PATH. Please install yarn and try again.")?;
         processes.push((
             "polkadot-js",
-            run_process(&yarn, &["run", "start"], &apps, false)?,
+            run_process(&yarn, &["run", "start"], apps, false)?,
         ));
     }
     // Run Polkadot process
@@ -146,14 +146,14 @@ fn run_process(
 }
 
 fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
-    let mut cwd = PathBuf::from(match &cli.path {
+    let mut cwd = match &cli.path {
         Some(path) => path.clone(),
         None => PathBuf::from(&std::env::var("HOME").map_err(|_| {
             anyhow!(
                 "User $HOME not found, re-run with --path to specify where to download artifacts"
             )
         })?),
-    });
+    };
     // --tmp and --fresh flags are mutually exclusive
     // cwd/.local-polkadot
     cwd = if cli.tmp {
@@ -161,7 +161,8 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             .take(10)
             .collect();
         // --tmp + --path <path>
-        let tmp_dir = if cli.path.is_some() {
+        
+        if cli.path.is_some() {
             cwd.join(f!(".tmp-local-polkadot-{s}")) // allow --path create_dir_all to be handled downstream
         } else {
             // --tmp only
@@ -169,8 +170,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             fs::create_dir(&tmp_dir)
                 .map_err(|e| anyhow!(f!("Failed to create temporary dir {:?}", e)))?;
             tmp_dir
-        };
-        tmp_dir
+        }
     } else {
         cwd.join(".local-polkadot")
     };
