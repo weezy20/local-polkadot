@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
         cwd,
         polkadot,
         apps,
-    } = setup(cli)?;
+    } = setup(&cli)?;
 
     let mut processes: Vec<(&'static str, Child)> = vec![];
 
@@ -77,16 +77,18 @@ fn main() -> anyhow::Result<()> {
             true,
         )?,
     ));
-    println!(
-        "\x1b[1m{}: {}\n\x1b[0m",
-        style("Explorer").cyan(),
-        style("http://localhost:3000").green()
-    );
-    println!(
-        "\x1b[1m{}: (Wait for warp and state sync to complete)\n\t{}\n\x1b[0m",
-        style("Local").red(),
-        style("http://localhost:3000/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer").green()
-    );
+    if !cli.skip_polkadotjs {
+        println!(
+            "\x1b[1m{}: {}\n\x1b[0m",
+            style("Explorer").cyan(),
+            style("http://localhost:3000").green()
+        );
+        println!(
+            "\x1b[1m{}: (Wait for warp and state sync to complete)\n\t{}\n\x1b[0m",
+            style("Local").red(),
+            style("http://localhost:3000/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer").green()
+        );
+    }
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
 
     rx.recv().expect("Could not receive from channel.");
@@ -139,7 +141,10 @@ fn run_process(
                 // Clear the line before printing new log
                 execute!(io::stdout(), Clear(ClearType::UntilNewLine)).unwrap();
                 // Print log
-                eprintln!("Node Logs 🖥️ > {}", line.expect("Failed to read line from stderr"));
+                eprintln!(
+                    "Node Logs 🖥️ > {}",
+                    line.expect("Failed to read line from stderr")
+                );
             }
         });
         // Return handle to the spawned process
@@ -147,7 +152,7 @@ fn run_process(
     }
 }
 
-fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
+fn setup(cli: &cli::Cli) -> anyhow::Result<Resources> {
     let mut cwd = match &cli.path {
         Some(path) => path.clone(),
         None => PathBuf::from(&std::env::var("HOME").map_err(|_| {
