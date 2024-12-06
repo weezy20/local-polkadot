@@ -6,7 +6,7 @@ use cliclack::Confirm;
 use console::style;
 use crossterm::{
     cursor, execute,
-    terminal::{Clear, ClearType},
+    terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use reqwest::blocking::Client;
 use std::{
@@ -32,6 +32,7 @@ fn main() -> anyhow::Result<()> {
     ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel."))
         .expect("Error setting Ctrl-C handler");
     let tmp = cli.tmp;
+    execute!(io::stdout(), EnterAlternateScreen)?;
     let Resources {
         cwd,
         polkadot,
@@ -86,6 +87,7 @@ fn main() -> anyhow::Result<()> {
     );
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
     rx.recv().expect("Could not receive from channel.");
+    execute!(io::stdout(), LeaveAlternateScreen)?;
     execute!(io::stdout(), Clear(ClearType::FromCursorDown)).unwrap();
     println!("\nCleaning up and Exiting...");
     for (name, mut p) in processes {
