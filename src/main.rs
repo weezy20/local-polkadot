@@ -86,6 +86,7 @@ fn main() -> anyhow::Result<()> {
     );
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
     rx.recv().expect("Could not receive from channel.");
+    execute!(io::stdout(), Clear(ClearType::FromCursorDown)).unwrap();
     println!("\nCleaning up and Exiting...");
     for (name, mut p) in processes {
         println!("Killing {}", name);
