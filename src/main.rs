@@ -3,10 +3,15 @@ mod cli;
 use anyhow::{anyhow, Context};
 use clap::Parser;
 use cliclack::Confirm;
+use console::style;
+use crossterm::{
+    cursor, execute,
+    terminal::{Clear, ClearType},
+};
 use reqwest::blocking::Client;
 use std::{
     fs,
-    io::BufRead,
+    io::{self, BufRead},
     path::{Path, PathBuf},
     process::{Child, Command},
     vec,
@@ -69,7 +74,16 @@ fn main() -> anyhow::Result<()> {
             true,
         )?,
     ));
-
+    println!(
+        "\x1b[1m{}: {}\x1b[0m",
+        style("Explorer").cyan(),
+        style("http://localhost:3000").green()
+    );
+    println!(
+        "\x1b[1m{}:    {}\x1b[0m",
+        style("Local").red(),
+        style("http://localhost:3000/?rpc=ws%3A%2F%2F127.0.0.1%3A9944#/explorer").green()
+    );
     println!("\x1b[1m========= Press Ctrl-C to terminate all processes =========\x1b[0m");
     rx.recv().expect("Could not receive from channel.");
     println!("\nCleaning up and Exiting...");
@@ -110,10 +124,16 @@ fn run_process(
 
         // capture_log maybe used only for node-processes as such, it is sensible to only spawn a thread to print stderr
         let stderr = child.stderr.take().expect("Failed to open stderr");
+        execute!(io::stdout(), Clear(ClearType::FromCursorUp)).unwrap();
 
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines() {
+                // Move the cursor to the position below the pinned lines
+                execute!(io::stdout(), cursor::MoveTo(0, 0)).unwrap();
+                // Clear the line before printing new log
+                execute!(io::stdout(), Clear(ClearType::UntilNewLine)).unwrap();
+                // Print log
                 eprintln!("{}", line.expect("Failed to read line from stderr"));
             }
         });
@@ -221,7 +241,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                 // println!("Polkadot exe download completed.");
                 spinner.stop(f!(
                     "{} Polkadot exe download completed.",
-                    console::style("✔").green()
+                    style("✔").green()
                 ));
             }
             Ok(())
@@ -291,7 +311,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                         spinner.set_message("Yarn install completed");
                         spinner.stop(f!(
                             "{} Polkadot-js installation completed",
-                            console::style("✔").green()
+                            style("✔").green()
                         ));
                     }
                 }

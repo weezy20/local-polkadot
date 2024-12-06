@@ -1,7 +1,7 @@
 [package]
 name = "local-polkadot"
 description = "A simple CLI tool to run a local Polkadot RPC Node and explorer"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "GPL-3.0"
 authors = ["Abhishek Shah <abhishekshah3@gmail.com>"]
@@ -14,6 +14,7 @@ anyhow = "1.0.93"
 clap = { version = "4.5.21", features = ["derive"] }
 cliclack = "0.3.5"
 console = "0.15.8"
+crossterm = "0.28.1"
 ctrlc = "3.4.5"
 fastrand = "2.2.0"
 reqwest = { version = "0.12.9", features = ["blocking"] }
