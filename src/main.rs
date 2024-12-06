@@ -199,6 +199,7 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
     }
 
     // Download
+    let multi = cliclack::multi_progress("Spinning up the wheels 🚗");
     let client = Client::new();
     std::thread::scope(|s| {
         // Polkadot binary
@@ -206,11 +207,10 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
             if cwd.join("polkadot").exists() {
                 println!("Polkadot already exists in the specified path. Skipping download...");
             } else {
-                // let spinner = cliclack::spinner();
-                // spinner.set_message("Polkadot: ");
-                // spinner.start(f!("Downloading polkadot into {}...", cwd.display()));
+                let spinner = multi.add(cliclack::spinner());
+                spinner.start(f!("Downloading polkadot into {}...", cwd.display()));
                 // Download the file
-                println!("Downloading Polkadot exe ...");
+                // println!("Downloading Polkadot exe ...");
                 client
                     .get(POLKADOT)
                     .send()
@@ -218,14 +218,18 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                     .copy_to(&mut fs::File::create(cwd.join("polkadot"))?)
                     .expect("returns binary data");
 
-                println!("Polkadot exe download completed.");
-                // spinner.stop(f!("Polkadot exe download completed."));
+                // println!("Polkadot exe download completed.");
+                spinner.stop(f!(
+                    "{} Polkadot exe download completed.",
+                    console::style("✔").green()
+                ));
             }
             Ok(())
         });
 
         // Polkadot-js/apps zip
         s.spawn(|| -> anyhow::Result<()> {
+            let spinner = multi.add(cliclack::spinner());
             if !cli.skip_polkadotjs {
                 if cwd.join("apps-master").exists() {
                     println!(
@@ -235,12 +239,14 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                     println!(
                         "Polkadot-js zip already exists in the specified path. Skipping download..."
                     );
-                    println!("Extracting pjs.zip into {}/apps-master...", cwd.display());
+                    spinner.start(f!(
+                        "Extracting pjs.zip into {}/apps-master...",
+                        cwd.display()
+                    ));
                     let mut archive = zip::ZipArchive::new(fs::File::open(cwd.join("pjs.zip"))?)?;
                     unzip(&mut archive, &cwd)?;
-                    println!("Extraction of pjs.zip completed.");
+                    spinner.stop("Extraction of pjs.zip completed.");
                 } else {
-                    let spinner = cliclack::spinner();
                     spinner.start(f!(
                         "Downloading polkadot-js into {}/apps-master...",
                         cwd.display()
@@ -282,13 +288,18 @@ fn setup(cli: cli::Cli) -> anyhow::Result<Resources> {
                                     e
                                 )
                             })?;
-                        spinner.stop("Yarn install completed.");
+                        spinner.set_message("Yarn install completed");
+                        spinner.stop(f!(
+                            "{} Polkadot-js installation completed",
+                            console::style("✔").green()
+                        ));
                     }
                 }
             }
             Ok(())
         });
     });
+    multi.stop();
     // FINALLY make everything ready to execute
     // Make the downloaded file executable
     let _ = Command::new("chmod")
