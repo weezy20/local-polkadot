@@ -53,36 +53,40 @@ fn main() -> anyhow::Result<()> {
     }
     execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))?;
     // Run Polkadot process
-    processes.push((
-        "polkadot",
-        run_process(
-            &fs::canonicalize(polkadot)?,
-            &[
-                "--chain",
-                "polkadot",
-                "--tmp",
-                "--name",
-                "myrpc",
-                "--sync",
-                "warp",
-                "--rpc-cors",
-                "all",
-                "--rpc-methods",
-                "Safe",
-                "--rpc-port",
-                "9944",
-                "--no-telemetry",
-            ],
-            &cwd,
-            true,
-        )?,
-    ));
+    if !cli.only_polkadotjs {
+        processes.push((
+            "polkadot",
+            run_process(
+                &fs::canonicalize(polkadot)?,
+                &[
+                    "--chain",
+                    "polkadot",
+                    "--tmp",
+                    "--name",
+                    "myrpc",
+                    "--sync",
+                    "warp",
+                    "--rpc-cors",
+                    "all",
+                    "--rpc-methods",
+                    "Safe",
+                    "--rpc-port",
+                    "9944",
+                    "--no-telemetry",
+                ],
+                &cwd,
+                true,
+            )?,
+        ));
+    }
     if !cli.skip_polkadotjs {
         println!(
             "\x1b[1m{}: {}\n\x1b[0m",
             style("Explorer").cyan(),
             style("http://localhost:3000").green()
         );
+    }
+    if !cli.only_polkadotjs {
         println!(
             "\x1b[1m{}: (Wait for warp and state sync to complete)\n\t{}\n\x1b[0m",
             style("Local").red(),

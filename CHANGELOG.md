@@ -22,3 +22,7 @@
 
 ### [v0.4.0]
 - Improved cli user experience
+
+### [v0.5.0]
+- Added `--explorer` or `--pjs` cli option to only run the explorer without running a polkadot sync node
+Useful when you want to use local-polkadot just as a `polkadot-js` apps starter.

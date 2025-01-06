@@ -24,7 +24,8 @@ local-polkadot # 😉 < -- without the emoji
 
 Install it using `cargo-install` or compile it from source 
 ```sh
-cargo install local-polkadot
+cargo install local-polkadot # crates.io
+cargo install --git https://github.com/weezy20/local-polkadot 
 ```
 
 Run it however you want
