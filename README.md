@@ -15,10 +15,11 @@ Instead of
  - run chmod +x polkadot
  - run yarn install, yarn run start
 
-You can just 
+You can just run
 ```sh
-local-polkadot # 😉 < -- without the emoji
+local-polkadot
 ```
+And it will do all of the above for you.
 
 ## Usage
 
@@ -46,6 +47,9 @@ local-polkadot --tmp
 
 # Or create a tmp in a path of your choice
 local-polkadot --tmp --path <PATH> # Creates a subfolder in PATH that gets removed at the end of the proces
+
+# Run just the explorer for local testing
+local-polkadot --pjs # or --explorer or --polkadotjs these are aliases to the same flag.
 
 ## USE ctrl-c to gracefully shutdown
 
